@@ -1,0 +1,29 @@
+# Panduan Deployment - Sistem PIBG SK POLIS DEPOT
+
+Sistem ini telah sedia untuk dideploy secara profesional. Ikuti langkah-langkah di bawah untuk menghubungkan kod ini ke GitHub dan menghoskannya secara percuma.
+
+## Langkah 1: Persediaan GitHub
+1. Log masuk ke akaun [GitHub](https://github.com/) anda.
+2. Klik butang **"New"** (Hijau) untuk mencipta repositori baru.
+3. Beri nama repositori (contoh: `pibg-spd-system`) dan klik **"Create repository"**.
+4. Muat naik (upload) semua fail dari projek ini ke repositori tersebut.
+
+## Langkah 2: Hubungkan ke Vercel (Paling Mudah & Pantas)
+1. Pergi ke [Vercel](https://vercel.com/) dan log masuk menggunakan akaun GitHub anda.
+2. Klik butang **"Add New"** > **"Project"**.
+3. Cari repositori `pibg-spd-system` dan klik **"Import"**.
+4. Di bahagian **Environment Variables**, anda WAJIB menambah kunci berikut:
+   - **Key:** `API_KEY`
+   - **Value:** [Masukkan Gemini API Key anda dari Google AI Studio]
+5. Klik **"Deploy"**. Vercel akan memberikan anda pautan URL (cth: `pibg-spd.vercel.app`).
+
+## Langkah 3: Pastikan Backend Aktif
+Pastikan URL dalam fail `constants.ts` adalah URL Web App yang telah dideploy sebagai **"Anyone"** di Google Apps Script anda.
+
+## Ciri-ciri Tambahan:
+- **PWA Ready**: Aplikasi ini boleh dipasang (Install) terus ke telefon pintar.
+- **SPA Routing**: Fail `vercel.json` telah disediakan untuk memastikan pautan `/admin` dan `/apply` tidak ralat (404) apabila diakses terus.
+- **Security**: Password admin adalah `manloi` (boleh ditukar di `constants.ts`).
+
+---
+*Dibangunkan dengan ❤️ untuk komuniti SK POLIS DEPOT*
