@@ -1,0 +1,167 @@
+
+/**
+ * SISTEM PENGELUARAN WANG PIBG SK POLIS DEPOT
+ * 
+ * ARAHAN:
+ * 1. Salin kod ini ke dalam Editor Google Apps Script anda (script.google.com).
+ * 2. Pastikan ID Folder, ID Sheet, dan ID Template adalah betul.
+ * 3. Klik "Deploy" -> "New Deployment".
+ * 4. Pilih "Web App".
+ * 5. Execute as: "Me".
+ * 6. Who has access: "Anyone".
+ * 7. Copy URL Web App yang terhasil dan masukkan ke constants.ts dalam React app.
+ */
+
+const CONFIG = {
+  SHEET_ID: '1b5Z_eo1woKxeJW4y-eKY9J_awbOnQfo04eyMEdqdXg0',
+  TEMPLATE_ID: '1ItAicwR8deTCf2GH4ksRY-VSm-6SE8743N7igsIrmxs',
+  FOLDER_ID: '1WK-LG88zukF_IE4LSt7udXUGy5GKF0ZY'
+};
+
+/**
+ * Mengendalikan permintaan POST (Submit borang & Kemas kini status)
+ */
+function doPost(e) {
+  try {
+    const postData = e.postData.contents;
+    const data = JSON.parse(postData);
+    
+    // 1. KEMAS KINI STATUS (Dari Dashboard Admin)
+    if (data.action === 'updateStatus') {
+      const result = updateSheetStatus(data.rowId, data.status);
+      return createJsonResponse(result);
+    }
+    
+    // 2. PROSES PERMOHONAN BARU (Dari Borang Pengguna)
+    const result = processApplication(data);
+    return createJsonResponse(result);
+
+  } catch (error) {
+    return createJsonResponse({ 
+      success: false, 
+      message: "Ralat Server: " + error.toString() 
+    });
+  }
+}
+
+/**
+ * Mengendalikan permintaan GET (Ambil data untuk Dashboard)
+ */
+function doGet(e) {
+  try {
+    const ss = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+    const sheet = ss.getSheets()[0];
+    const values = sheet.getDataRange().getValues();
+    
+    const data = [];
+    // Mula dari baris ke-2 (i=1) untuk langkau tajuk (header)
+    for (let i = 1; i < values.length; i++) {
+      const row = values[i];
+      // Pastikan baris tidak kosong (semak Nama Pemohon di kolum B)
+      if (row[1]) {
+        data.push({
+          rowId: i + 1, // Nombor baris sebenar di Google Sheet
+          timestamp: row[0],
+          namaPemohon: row[1],
+          unit: row[2],
+          tujuan: row[3],
+          jumlah: row[4],
+          status: row[5] || 'BARU',
+          pdfLink: row[6] || '#'
+        });
+      }
+    }
+    
+    return createJsonResponse({ success: true, data: data });
+
+  } catch (error) {
+    return createJsonResponse({ 
+      success: false, 
+      message: "Gagal mengambil data: " + error.toString() 
+    });
+  }
+}
+
+/**
+ * Fungsi untuk mengemaskini status permohonan di Google Sheet
+ */
+function updateSheetStatus(rowId, status) {
+  try {
+    const ss = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+    const sheet = ss.getSheets()[0];
+    
+    // Status berada di Kolum F (Indeks ke-6)
+    sheet.getRange(rowId, 6).setValue(status);
+    
+    return { success: true, message: "Status berjaya dikemaskini" };
+  } catch (error) {
+    return { success: false, message: error.toString() };
+  }
+}
+
+/**
+ * Fungsi utama: Isi Doc -> Jana PDF -> Simpan Sheet
+ */
+function processApplication(data) {
+  try {
+    const templateFile = DriveApp.getFileById(CONFIG.TEMPLATE_ID);
+    const destinationFolder = DriveApp.getFolderById(CONFIG.FOLDER_ID);
+    
+    // 1. Buat salinan template dalam folder yang ditetapkan
+    const fileName = `Permohonan_${data.namaPemohon}_${Utilities.formatDate(new Date(), "GMT+8", "yyyyMMdd_HHmm")}`;
+    const copy = templateFile.makeCopy(fileName, destinationFolder);
+    const doc = DocumentApp.openById(copy.getId());
+    const body = doc.getBody();
+    
+    // 2. Gantikan Placeholder (Mapping ikut borang & template)
+    body.replaceText('{{NAMA}}', (data.namaPemohon || '').toUpperCase());
+    body.replaceText('{{UNIT}}', (data.unit || '').toUpperCase());
+    body.replaceText('{{TUJUAN}}', data.tujuan || '');
+    body.replaceText('{{JUMLAH}}', Number(data.jumlah || 0).toFixed(2));
+    body.replaceText('{{JUMLAH_PERKATAAN}}', (data.jumlahPerkataan || '').toUpperCase());
+    body.replaceText('{{KEPADA}}', (data.bayaranKepada || '').toUpperCase());
+    body.replaceText('{{NOMBOR AKAUN}}', data.nomborAkaun || '');
+    
+    // Tambahan: Tarikh hari ini jika ada {{TARIKH}} dalam template
+    body.replaceText('{{TARIKH}}', Utilities.formatDate(new Date(), "GMT+8", "dd/MM/yyyy"));
+    
+    doc.saveAndClose();
+    
+    // 3. Jana fail PDF daripada Dokumen tersebut
+    const pdfBlob = copy.getAs(MimeType.PDF);
+    const pdfFile = destinationFolder.createFile(pdfBlob);
+    
+    // 4. Padam salinan Dokumen (hanya simpan PDF untuk jimat ruang Drive)
+    copy.setTrashed(true);
+    
+    // 5. Simpan rekod ke Google Sheet (Append Row)
+    const ss = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+    const sheet = ss.getSheets()[0];
+    sheet.appendRow([
+      new Date(),           // A: Timestamp
+      data.namaPemohon,     // B: Nama
+      data.unit,            // C: Unit
+      data.tujuan,          // D: Tujuan
+      data.jumlah,          // E: Jumlah (RM)
+      'BARU',               // F: Status Awal
+      pdfFile.getUrl()      // G: Link PDF
+    ]);
+    
+    return {
+      success: true,
+      url: pdfFile.getUrl(),
+      message: "Permohonan berjaya diproses"
+    };
+    
+  } catch (error) {
+    throw new Error("Proses Gagal: " + error.toString());
+  }
+}
+
+/**
+ * Helper untuk menghantar respon JSON dengan Header CORS yang betul
+ */
+function createJsonResponse(data) {
+  return ContentService.createTextOutput(JSON.stringify(data))
+    .setMimeType(ContentService.MimeType.JSON);
+}
